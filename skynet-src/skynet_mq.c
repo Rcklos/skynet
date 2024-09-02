@@ -18,8 +18,13 @@
 #define MQ_IN_GLOBAL 1
 #define MQ_OVERLOAD 1024
 
+/**
+ * 消息队列数据结构
+ */
 struct message_queue {
+	// 自旋锁
 	struct spinlock lock;
+	// 句柄
 	uint32_t handle;
 	int cap;
 	int head;
@@ -32,9 +37,17 @@ struct message_queue {
 	struct message_queue *next;
 };
 
+/**
+ * 全局队列的数据结构
+ * 队列里面是消息队列的队列
+ * 是的，嵌套队列
+ */
 struct global_queue {
+	// 头部节点
 	struct message_queue *head;
+	// 尾部节点
 	struct message_queue *tail;
+	// 自旋锁
 	struct spinlock lock;
 };
 
@@ -208,10 +221,16 @@ skynet_mq_push(struct message_queue *q, struct skynet_message *message) {
 	SPIN_UNLOCK(q)
 }
 
+/**
+ 	* 初始化全局队列
+ 	*/
 void 
 skynet_mq_init() {
+	// 分配全局队列的内存空间
 	struct global_queue *q = skynet_malloc(sizeof(*q));
+	// 清空内存
 	memset(q,0,sizeof(*q));
+	// 全局队列的自旋锁初始化
 	SPIN_INIT(q);
 	Q=q;
 }

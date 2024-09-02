@@ -159,11 +159,16 @@ skynet_module_instance_signal(struct skynet_module *m, void *inst, int signal) {
 
 void 
 skynet_module_init(const char *path) {
+	// 申请一块空间
 	struct modules *m = skynet_malloc(sizeof(*m));
+	// 模块数量初始化为0
 	m->count = 0;
+	// 模块路径
 	m->path = skynet_strdup(path);
 
+	// 自旋锁初始化
 	SPIN_INIT(m)
 
+	// 这个时候只是做完初始化工作，没有加载模块
 	M = m;
 }

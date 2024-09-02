@@ -60,11 +60,19 @@ struct skynet_context {
 	CHECKCALLING_DECL
 };
 
+/**
+ 	* skynet的GNODE数据结构
+ 	*/
 struct skynet_node {
+	// 上下文的数量
 	ATOM_INT total;
+	// 是否已经初始化
 	int init;
+	// 一般是用于谁监听释放了什么的，但初步搜了下基本上没有地方在用
 	uint32_t monitor_exit;
+	// 线程私有数据句柄
 	pthread_key_t handle_key;
+	// 是否启用统计信息, 默认启用
 	bool profile;	// default is on
 };
 
@@ -154,7 +162,7 @@ skynet_context_new(const char * name, const char *param) {
 	ctx->handle = skynet_handle_register(ctx);
 	struct message_queue * queue = ctx->queue = skynet_mq_create(ctx->handle);
 	// init function maybe use ctx->handle, so it must init at last
-	context_inc();
+	context_inc(); // skynet_node.total原子自增
 
 	CHECKCALLING_BEGIN(ctx)
 	int r = skynet_module_instance_init(mod, inst, ctx, param);
@@ -805,16 +813,25 @@ skynet_context_send(struct skynet_context * ctx, void * msg, size_t sz, uint32_t
 	skynet_mq_push(ctx->queue, &smsg);
 }
 
+/**
+ * 初始化skynet的GNODE
+ */
 void 
 skynet_globalinit(void) {
-	ATOM_INIT(&G_NODE.total , 0);
+	// 置0，这里要用原子操作，意味着这个字段是需要线程安全的
+	ATOM_INIT(&G_NODE.total , 0); 
+	// 监听器句柄置0，这个字段暂时用不着，无视它先(主要我现在还不知道它有什么用)
 	G_NODE.monitor_exit = 0;
+	// 是否已经初始化
 	G_NODE.init = 1;
+	// 创建私有数据Key
+	// 学习文档: https://www.cnblogs.com/zhangxuan/p/6515264.html
 	if (pthread_key_create(&G_NODE.handle_key, NULL)) {
 		fprintf(stderr, "pthread_key_create failed");
 		exit(1);
 	}
 	// set mainthread's key
+	// 设置主线程的私有数据
 	skynet_initthread(THREAD_MAIN);
 }
 
@@ -823,9 +840,15 @@ skynet_globalexit(void) {
 	pthread_key_delete(G_NODE.handle_key);
 }
 
+/**
+ 	* 初始化skynet线程
+ 	*/
 void
 skynet_initthread(int m) {
+	// 挺有趣的, m = THREAD_MAIN的时候，m = 1
+	// 而-1转成uint32_t的时候，是0xFFFFFFFF
 	uintptr_t v = (uint32_t)(-m);
+	// 把值塞入线程TSD
 	pthread_setspecific(G_NODE.handle_key, (void *)v);
 }
 

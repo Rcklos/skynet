@@ -254,40 +254,58 @@ bootstrap(struct skynet_context * logger, const char * cmdline) {
 	}
 }
 
+/**
+ 	* skynet实际启动入口
+ 	*/
 void 
 skynet_start(struct skynet_config * config) {
 	// register SIGHUP for log file reopen
+	// 注册挂起信号处理函数
 	struct sigaction sa;
 	sa.sa_handler = &handle_hup;
 	sa.sa_flags = SA_RESTART;
 	sigfillset(&sa.sa_mask);
 	sigaction(SIGHUP, &sa, NULL);
 
+	// 守护进程部分的逻辑
 	if (config->daemon) {
 		if (daemon_init(config->daemon)) {
 			exit(1);
 		}
 	}
+
+	// 集群初始化  TODO: 暂时不看集群
 	skynet_harbor_init(config->harbor);
+	// 句柄初始化
 	skynet_handle_init(config->harbor);
+	// 队列初始化
 	skynet_mq_init();
+	// 模块初始化
 	skynet_module_init(config->module_path);
+	// 定时器初始化
 	skynet_timer_init();
+	// socket初始化
 	skynet_socket_init();
+	// 统计信息是否启用(直接修改GNODE)
 	skynet_profile_enable(config->profile);
 
+	// 注册一个log服务，每个服务都会绑定一个ctx对象
 	struct skynet_context *ctx = skynet_context_new(config->logservice, config->logger);
 	if (ctx == NULL) {
 		fprintf(stderr, "Can't launch %s service\n", config->logservice);
 		exit(1);
 	}
 
+	// 给log服务的ctx句柄命名为`logger`
 	skynet_handle_namehandle(skynet_context_handle(ctx), "logger");
 
+	// 启动logger服务
 	bootstrap(ctx, config->bootstrap);
 
+	// 启动工作线程(默认8个)，这里skynet已经启动完成了
 	start(config->thread);
 
+	// 走到这里意味着skynet要关闭了
 	// harbor_exit may call socket send, so it should exit before socket_free
 	skynet_harbor_exit();
 	skynet_socket_free();

@@ -36,6 +36,7 @@ struct link_list {
 	struct timer_node *tail;
 };
 
+// 时间轮(https://yuerer.com/Skynet%E6%97%B6%E9%97%B4%E8%BD%AE%E5%89%96%E6%9E%90/)
 struct timer {
 	struct link_list near[TIME_NEAR];
 	struct link_list t[4][TIME_LEVEL];
@@ -179,11 +180,11 @@ timer_update(struct timer *T) {
 
 static struct timer *
 timer_create_timer() {
+	// 定时器初始化
 	struct timer *r=(struct timer *)skynet_malloc(sizeof(struct timer));
 	memset(r,0,sizeof(*r));
 
 	int i,j;
-
 	for (i=0;i<TIME_NEAR;i++) {
 		link_clear(&r->near[i]);
 	}
@@ -194,6 +195,7 @@ timer_create_timer() {
 		}
 	}
 
+	// 定时器也有自旋锁
 	SPIN_INIT(r)
 
 	r->current = 0;
@@ -271,6 +273,7 @@ skynet_now(void) {
 
 void 
 skynet_timer_init(void) {
+	// 创建定时器
 	TI = timer_create_timer();
 	uint32_t current = 0;
 	systime(&TI->starttime, &current);

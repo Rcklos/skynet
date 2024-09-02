@@ -248,15 +248,22 @@ skynet_handle_namehandle(uint32_t handle, const char *name) {
 void 
 skynet_handle_init(int harbor) {
 	assert(H==NULL);
+	// 申请一片一块句柄空间
 	struct handle_storage * s = skynet_malloc(sizeof(*H));
+	// 默认句柄数量
 	s->slot_size = DEFAULT_SLOT_SIZE;
+	// 句柄空间
 	s->slot = skynet_malloc(s->slot_size * sizeof(struct skynet_context *));
+	// 清空句柄
 	memset(s->slot, 0, s->slot_size * sizeof(struct skynet_context *));
 
+	// 初始化句柄读写锁
 	rwlock_init(&s->lock);
 	// reserve 0 for system
 	s->harbor = (uint32_t) (harbor & 0xff) << HANDLE_REMOTE_SHIFT;
+	// 句柄索引
 	s->handle_index = 1;
+	// 命名
 	s->name_cap = 2;
 	s->name_count = 0;
 	s->name = skynet_malloc(s->name_cap * sizeof(struct handle_name));
