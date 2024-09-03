@@ -254,7 +254,7 @@ struct skynet_context * skynet_context_new(const char * name, const char *param)
 
 上面的注释已经该说的都说了，启动完`logger`模块后，skynet还会调用一个函数，用于启动`snlua`服务。
 
-> 本质上是配置的，一般没改的话`snlua`还不会做什么事情
+> 本质上是配置的，一般没改的话`snlua`会去执行加载器`loader`的lua代码，具体文件是`lualib/loader.lua`，加载器会去拉取项目配置的lua服务, 具体会在后面的笔记文章里讨论这个。
 
 ```c
  // 启动snlua服务(默认是这个)
@@ -275,6 +275,78 @@ struct skynet_context * skynet_context_new(const char * name, const char *param)
 ```c
  // 启动各种线程(默认8个工作线程, 3个额外线程)，这个函数跑完skynet已经启动完成了
  start(config->thread);
+```
+
+看看`start`函数:
+
+```c
+/**
+ * skynet启动工作线程
+ */
+static void start(int thread) {
+	// 这里使用pthread启动的线程
+	// 配置默认是8个工作线程，这里本质上会额外加3个，总共11个，但最终常驻为skynet服务的基本上就是8个
+	// 多出来的3个分别是:
+	// 1. 监控线程
+	// 2. 定时器线程
+	// 3. socket线程
+	pthread_t pid[thread+3];
+
+	// 总监控，也就是管理工作线程的
+	struct monitor *m = skynet_malloc(sizeof(*m));
+	memset(m, 0, sizeof(*m));
+	m->count = thread;
+	m->sleep = 0;
+
+	// 每个线程自己也会有一个线程监控
+	m->m = skynet_malloc(thread * sizeof(struct skynet_monitor *));
+	int i;
+	for (i=0;i<thread;i++) {
+		m->m[i] = skynet_monitor_new();
+	}
+	// 互斥量初始化
+	if (pthread_mutex_init(&m->mutex, NULL)) {
+		fprintf(stderr, "Init mutex error");
+		exit(1);
+	}
+	if (pthread_cond_init(&m->cond, NULL)) {
+		fprintf(stderr, "Init cond error");
+		exit(1);
+	}
+
+	// 监控线程启动
+	create_thread(&pid[0], thread_monitor, m);
+	// 定时器线程启动
+	create_thread(&pid[1], thread_timer, m);
+	// socket线程启动
+	create_thread(&pid[2], thread_socket, m);
+
+	// 每个工作线程都是竞争拿到消息队列去消费的，这个weight大概率是用来控制权重的
+	static int weight[] = { 
+		-1, -1, -1, -1, 0, 0, 0, 0,
+		1, 1, 1, 1, 1, 1, 1, 1, 
+		2, 2, 2, 2, 2, 2, 2, 2, 
+		3, 3, 3, 3, 3, 3, 3, 3, };
+	struct worker_parm wp[thread];
+	for (i=0;i<thread;i++) {
+		wp[i].m = m;
+		wp[i].id = i;
+		if (i < sizeof(weight)/sizeof(weight[0])) {
+			wp[i].weight= weight[i];
+		} else {
+			wp[i].weight = 0;
+		}
+		// 前面的weight先跳过，关注这里就是worker实际开始执行的地方
+		create_thread(&pid[i+3], thread_worker, &wp[i]);
+	}
+
+	// 等待所有线程跑完
+	for (i=0;i<thread+3;i++) {
+		pthread_join(pid[i], NULL); 
+	}
+
+	free_monitor(m);
+}
 ```
 
 ### 完整启动代码
@@ -339,3 +411,21 @@ void skynet_start(struct skynet_config * config) {
 	}
 }
 ```
+
+### 写在结尾
+
+到这里为止，skynet已经完成启动了。
+
+但启动之后的skynet也没闲着，具体还有别的内容还得等后续的文章，这篇笔记主要是上一篇的补充，所以还会放在别的文章里归档探讨。
+
+(定个小目标，一天至少产出一篇)
+
+> 以下是后续`skynet`相关的文章目标，可能一篇就能讨论两个，可能一篇探讨不完一个(会分篇)，具体再看。
+
+1. lua服务是怎么启动的?
+2. skynet怎么管理协程
+3. 如何管理socket，其接收客户端的数据又怎么交互到lua服务的?
+4. 定时器在做什么?
+5. 怎么监控线程
+6. skynet的日志机制
+7. ...(等待补充)
