@@ -23,6 +23,9 @@
 
 #define MEMORY_WARNING_REPORT (1024 * 1024 * 32)
 
+/**
+ * snlua数据结构
+ */
 struct snlua {
 	lua_State * L;
 	struct skynet_context * ctx;
@@ -499,6 +502,9 @@ lalloc(void * ud, void *ptr, size_t osize, size_t nsize) {
 	return skynet_lalloc(ptr, osize, nsize);
 }
 
+/**
+ 	* snlua服务创建回调
+ 	*/
 struct snlua *
 snlua_create(void) {
 	struct snlua * l = skynet_malloc(sizeof(*l));

@@ -30,6 +30,10 @@ skynet_monitor_delete(struct skynet_monitor *sm) {
 	skynet_free(sm);
 }
 
+/**
+ 	* 监控消息触发
+ 	* 监听源、监听目标
+ 	*/
 void 
 skynet_monitor_trigger(struct skynet_monitor *sm, uint32_t source, uint32_t destination) {
 	sm->source = source;

@@ -31,8 +31,13 @@ struct monitor {
 	int quit;
 };
 
+/**
+ * 工作线程的参数
+ */
 struct worker_parm {
+	// 线程监控
 	struct monitor *m;
+	// 线程id
 	int id;
 	int weight;
 };
@@ -154,16 +159,24 @@ thread_timer(void *p) {
 	return NULL;
 }
 
+/**
+ * worker线程启动入口
+ */
 static void *
 thread_worker(void *p) {
+	// worker参数
 	struct worker_parm *wp = p;
 	int id = wp->id;
 	int weight = wp->weight;
 	struct monitor *m = wp->m;
 	struct skynet_monitor *sm = m->m[id];
+	// 和之前一样初始化TSD
 	skynet_initthread(THREAD_WORKER);
 	struct message_queue * q = NULL;
+	// 监控不退我不退
 	while (!m->quit) {
+		// 尝试从全局队列里面弹出一个消息队列进行消费
+		// 函数的字面意思就是ctx消息分发
 		q = skynet_context_message_dispatch(sm, q, weight);
 		if (q == NULL) {
 			if (pthread_mutex_lock(&m->mutex) == 0) {
@@ -225,7 +238,7 @@ start(int thread) {
 	// socket线程启动
 	create_thread(&pid[2], thread_socket, m);
 
-	// 这里看不懂，应该和某些优化有关，看到后面就知道了
+	// 每个工作线程都是竞争拿到消息队列去消费的，这个weight大概率是用来控制权重的
 	static int weight[] = { 
 		-1, -1, -1, -1, 0, 0, 0, 0,
 		1, 1, 1, 1, 1, 1, 1, 1, 

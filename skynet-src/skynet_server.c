@@ -286,10 +286,14 @@ skynet_isremote(struct skynet_context * ctx, uint32_t handle, int * harbor) {
 	return ret;
 }
 
+/**
+ * 派发消息
+ */
 static void
 dispatch_message(struct skynet_context *ctx, struct skynet_message *msg) {
 	assert(ctx->init);
 	CHECKCALLING_BEGIN(ctx)
+	// 这时TSD存储当前ctx的句柄
 	pthread_setspecific(G_NODE.handle_key, (void *)(uintptr_t)(ctx->handle));
 	int type = msg->sz >> MESSAGE_TYPE_SHIFT;
 	size_t sz = msg->sz & MESSAGE_TYPE_MASK;
@@ -297,14 +301,18 @@ dispatch_message(struct skynet_context *ctx, struct skynet_message *msg) {
 	if (f) {
 		skynet_log_output(f, msg->source, type, msg->session, msg->data, sz);
 	}
+	// 消息量自增
 	++ctx->message_count;
 	int reserve_msg;
 	if (ctx->profile) {
+		// 这里是统计信息才会有的代码，本质上就是记录下消费时间
 		ctx->cpu_start = skynet_thread_time();
+		// 这里实际上就是在消费了
 		reserve_msg = ctx->cb(ctx, ctx->cb_ud, type, msg->session, msg->source, msg->data, sz);
 		uint64_t cost_time = skynet_thread_time() - ctx->cpu_start;
 		ctx->cpu_cost += cost_time;
 	} else {
+		// 这里实际上就是在消费了
 		reserve_msg = ctx->cb(ctx, ctx->cb_ud, type, msg->session, msg->source, msg->data, sz);
 	}
 	if (!reserve_msg) {
@@ -323,17 +331,24 @@ skynet_context_dispatchall(struct skynet_context * ctx) {
 	}
 }
 
+/**
+ * ctx消费消息
+ */
 struct message_queue * 
 skynet_context_message_dispatch(struct skynet_monitor *sm, struct message_queue *q, int weight) {
 	if (q == NULL) {
+		// 尝试从全局队列里面弹出一个消息队列
 		q = skynet_globalmq_pop();
 		if (q==NULL)
 			return NULL;
 	}
 
+	// 取到消息队列的ctx句柄，也就是每个消息队列都是有对应的服务去消费的
 	uint32_t handle = skynet_mq_handle(q);
 
+	// 根据句柄获取到对应的ctx对象
 	struct skynet_context * ctx = skynet_handle_grab(handle);
+	// 拿到的ctx已经无了的话，这里就是有问题的
 	if (ctx == NULL) {
 		struct drop_t d = { handle };
 		skynet_mq_release(q, drop_message, &d);
@@ -344,6 +359,7 @@ skynet_context_message_dispatch(struct skynet_monitor *sm, struct message_queue 
 	struct skynet_message msg;
 
 	for (i=0;i<n;i++) {
+		// 尝试弹出消息
 		if (skynet_mq_pop(q,&msg)) {
 			skynet_context_release(ctx);
 			return skynet_globalmq_pop();
@@ -356,14 +372,17 @@ skynet_context_message_dispatch(struct skynet_monitor *sm, struct message_queue 
 			skynet_error(ctx, "May overload, message queue length = %d", overload);
 		}
 
+		// 监控消息触发
 		skynet_monitor_trigger(sm, msg.source , handle);
 
 		if (ctx->cb == NULL) {
 			skynet_free(msg.data);
 		} else {
+			// 派发消息
 			dispatch_message(ctx, &msg);
 		}
 
+		// 监控消息重置
 		skynet_monitor_trigger(sm, 0,0);
 	}
 
