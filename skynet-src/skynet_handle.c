@@ -16,14 +16,22 @@ struct handle_name {
 	uint32_t handle;
 };
 
+/**
+ * 句柄存储数据结构
+ */
 struct handle_storage {
+	// 读写锁
 	struct rwlock lock;
 
+	// 集群
 	uint32_t harbor;
+	// 句柄索引
 	uint32_t handle_index;
+	// 存储相关
 	int slot_size;
 	struct skynet_context ** slot;
 	
+	// 命名相关
 	int name_cap;
 	int name_count;
 	struct handle_name *name;
@@ -31,12 +39,19 @@ struct handle_storage {
 
 static struct handle_storage *H = NULL;
 
+/**
+ 	* 注册ctx的句柄
+ 	*/
 uint32_t
 skynet_handle_register(struct skynet_context *ctx) {
+	// 句柄缓存
 	struct handle_storage *s = H;
 
+	// 句柄缓存是用读写锁的
 	rwlock_wlock(&s->lock);
 	
+	// 死循环，跑完return
+	// 这里也有一些扩容相关的逻辑，看看就好
 	for (;;) {
 		int i;
 		uint32_t handle = s->handle_index;
@@ -45,6 +60,7 @@ skynet_handle_register(struct skynet_context *ctx) {
 				// 0 is reserved
 				handle = 1;
 			}
+			// 计算哈希之后直接把句柄搞进去
 			int hash = handle & (s->slot_size-1);
 			if (s->slot[hash] == NULL) {
 				s->slot[hash] = ctx;

@@ -18,7 +18,11 @@
 #include <string.h>
 #include <signal.h>
 
+/**
+ * skynet监控数据结构
+ */
 struct monitor {
+	// 线程数量
 	int count;
 	struct skynet_monitor ** m;
 	pthread_cond_t cond;
@@ -179,20 +183,32 @@ thread_worker(void *p) {
 	return NULL;
 }
 
+/**
+ * skynet启动工作线程
+ */
 static void
 start(int thread) {
+	// 这里使用pthread启动的线程
+	// 配置默认是8个工作线程，这里本质上会额外加3个，总共11个，但最终常驻为skynet服务的基本上就是8个
+	// 多出来的3个分别是:
+	// 1. 监控线程
+	// 2. 定时器线程
+	// 3. socket线程
 	pthread_t pid[thread+3];
 
+	// 总监控，也就是管理工作线程的
 	struct monitor *m = skynet_malloc(sizeof(*m));
 	memset(m, 0, sizeof(*m));
 	m->count = thread;
 	m->sleep = 0;
 
+	// 每个线程自己也会有一个线程监控
 	m->m = skynet_malloc(thread * sizeof(struct skynet_monitor *));
 	int i;
 	for (i=0;i<thread;i++) {
 		m->m[i] = skynet_monitor_new();
 	}
+	// 互斥量初始化
 	if (pthread_mutex_init(&m->mutex, NULL)) {
 		fprintf(stderr, "Init mutex error");
 		exit(1);
@@ -202,10 +218,14 @@ start(int thread) {
 		exit(1);
 	}
 
+	// 监控线程启动
 	create_thread(&pid[0], thread_monitor, m);
+	// 定时器线程启动
 	create_thread(&pid[1], thread_timer, m);
+	// socket线程启动
 	create_thread(&pid[2], thread_socket, m);
 
+	// 这里看不懂，应该和某些优化有关，看到后面就知道了
 	static int weight[] = { 
 		-1, -1, -1, -1, 0, 0, 0, 0,
 		1, 1, 1, 1, 1, 1, 1, 1, 
@@ -220,9 +240,11 @@ start(int thread) {
 		} else {
 			wp[i].weight = 0;
 		}
+		// 前面的weight先跳过，关注这里就是worker实际开始执行的地方
 		create_thread(&pid[i+3], thread_worker, &wp[i]);
 	}
 
+	// 等待所有线程跑完
 	for (i=0;i<thread+3;i++) {
 		pthread_join(pid[i], NULL); 
 	}
@@ -230,8 +252,14 @@ start(int thread) {
 	free_monitor(m);
 }
 
+/**
+ * 一般是启动snlua服务
+ * 前面会启动logger的c服务，现在是启动第一个lua服务
+ * 但在启动lua服务前，我们需要启动一个snlua的c服务
+ */
 static void
 bootstrap(struct skynet_context * logger, const char * cmdline) {
+	// 这里会去执行命令行, 一般就是`snlua bootstrap`
 	int sz = strlen(cmdline);
 	char name[sz+1];
 	char args[sz+1];
@@ -246,6 +274,7 @@ bootstrap(struct skynet_context * logger, const char * cmdline) {
 	} else {
 		args[0] = '\0';
 	}
+	// 这里和c服务一样，都是会去开启一个新的ctx，这个服务就叫snlua
 	struct skynet_context *ctx = skynet_context_new(name, args);
 	if (ctx == NULL) {
 		skynet_error(NULL, "Bootstrap error : %s\n", cmdline);
@@ -299,10 +328,10 @@ skynet_start(struct skynet_config * config) {
 	// 给log服务的ctx句柄命名为`logger`
 	skynet_handle_namehandle(skynet_context_handle(ctx), "logger");
 
-	// 启动logger服务
+	// 启动snlua服务(默认是这个)
 	bootstrap(ctx, config->bootstrap);
 
-	// 启动工作线程(默认8个)，这里skynet已经启动完成了
+	// 启动各种线程(默认8个工作线程, 3个额外线程)，这个函数跑完skynet已经启动完成了
 	start(config->thread);
 
 	// 走到这里意味着skynet要关闭了

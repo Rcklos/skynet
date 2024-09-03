@@ -129,19 +129,30 @@ drop_message(struct skynet_message *msg, void *ud) {
 	skynet_send(NULL, source, msg->source, PTYPE_ERROR, msg->session, NULL, 0);
 }
 
+/**
+ * 创建一个新的ctx
+ * 实际上就是注册一个服务，然后创建并绑定一个ctx
+ */
 struct skynet_context * 
 skynet_context_new(const char * name, const char *param) {
+	// 加载c服务模块(如果加载过了这一步就会直接返回缓存的结果)
 	struct skynet_module * mod = skynet_module_query(name);
 
+	// 加载失败就嗝屁
 	if (mod == NULL)
 		return NULL;
 
+	// 创建实例，这里会调用`xxx_create`函数
 	void *inst = skynet_module_instance_create(mod);
+	// 失败了就嗝屁
 	if (inst == NULL)
 		return NULL;
+	// 创建一个新的ctx实例
 	struct skynet_context * ctx = skynet_malloc(sizeof(*ctx));
+	// c模块已经加载完成了，这时候可以绑定一下ctx
 	CHECKCALLING_INIT(ctx)
 
+	// 绑定工作
 	ctx->mod = mod;
 	ctx->instance = inst;
 	ATOM_INIT(&ctx->ref , 2);
@@ -158,22 +169,32 @@ skynet_context_new(const char * name, const char *param) {
 	ctx->message_count = 0;
 	ctx->profile = G_NODE.profile;
 	// Should set to 0 first to avoid skynet_handle_retireall get an uninitialized handle
+	// 初始化ctx句柄之前先置0
 	ctx->handle = 0;	
+	// 注册句柄
 	ctx->handle = skynet_handle_register(ctx);
+	// 每个ctx都会附带一个消息队列，skynet中，服务之间的交互都是用消息队列实现的
+	// ctx和mq的绑定还有其他机制，这里暂时先直接理解为ctx都附带着一个消息队列
 	struct message_queue * queue = ctx->queue = skynet_mq_create(ctx->handle);
 	// init function maybe use ctx->handle, so it must init at last
 	context_inc(); // skynet_node.total原子自增
 
 	CHECKCALLING_BEGIN(ctx)
+	// 这时候就是调用c模块对应的`init`的时候了
 	int r = skynet_module_instance_init(mod, inst, ctx, param);
 	CHECKCALLING_END(ctx)
 	if (r == 0) {
+		// 调用就直接释放ctx
 		struct skynet_context * ret = skynet_context_release(ctx);
 		if (ret) {
+			// 这里ctx是引用计数的，一开始的时候ref == 2，所以这个时候还不会直接delete
+			// 所以只要引用计数正常，就意味着初始化已经成功了
 			ctx->init = true;
 		}
+		// 这里会把消息队列压入全局队列里，因为ctx没必要一直持有
 		skynet_globalmq_push(queue);
 		if (ret) {
+			// 这里只是用了error的打印样式
 			skynet_error(ret, "LAUNCH %s %s", name, param ? param : "");
 		}
 		return ret;

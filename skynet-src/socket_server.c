@@ -112,21 +112,39 @@ struct socket {
 	size_t dw_size;
 };
 
+/**
+ * socket服务器数据结构
+ */
 struct socket_server {
+	// 时间
 	volatile uint64_t time;
+	// 保留描述符
 	int reserve_fd;	// for EMFILE
+	// 接收控制描述符
 	int recvctrl_fd;
+	// 发送控制描述符
 	int sendctrl_fd;
+	// 检查控制
 	int checkctrl;
+	// poll事件描述符
 	poll_fd event_fd;
+	// 分配id
 	ATOM_INT alloc_id;
+	// 事件数量
 	int event_n;
+	// 事件索引
 	int event_index;
+	// socket对象接口(缓冲区)
 	struct socket_object_interface soi;
+	// 事件存储
 	struct event ev[MAX_EVENT];
+	// socket存储
 	struct socket slot[MAX_SOCKET];
+	// 缓冲区(缓存一些共用的数据)
 	char buffer[MAX_INFO];
+	// udp的buff缓冲区
 	uint8_t udpbuffer[MAX_UDP_PACKAGE];
+	// 可以看看哪些是可读的描述符
 	fd_set rfds;
 };
 

@@ -15,6 +15,9 @@ struct skynet_monitor {
 	uint32_t destination;
 };
 
+/**
+ 	* 创建skynet_monitor实例
+ 	*/
 struct skynet_monitor * 
 skynet_monitor_new() {
 	struct skynet_monitor * ret = skynet_malloc(sizeof(*ret));

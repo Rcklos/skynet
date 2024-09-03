@@ -12,15 +12,26 @@
 
 #define MAX_MODULE_TYPE 32
 
+/**
+ * c模块组件数据结构
+ */
 struct modules {
+	// 计数，模块数量
 	int count;
+	// 自旋锁
 	struct spinlock lock;
+	// 模块路径
 	const char * path;
+	// 模块缓存
 	struct skynet_module m[MAX_MODULE_TYPE];
 };
 
 static struct modules * M = NULL;
 
+/**
+ * 尝试加载模块
+ * 对应配置里面的`cpath`
+ */
 static void *
 _try_open(struct modules *m, const char * name) {
 	const char *l;
@@ -62,6 +73,10 @@ _try_open(struct modules *m, const char * name) {
 	return dl;
 }
 
+/**
+ * 查询模块缓存，有就直接返回该模块指针
+ * 没有就返回空指针
+ */
 static struct skynet_module * 
 _query(const char * name) {
 	int i;
@@ -99,20 +114,30 @@ open_sym(struct skynet_module *mod) {
 	return mod->init == NULL;
 }
 
+/**
+ 	* 查询模块
+ 	*/
 struct skynet_module * 
 skynet_module_query(const char * name) {
+	// 如果服务已经注册过了，就直接返回缓存即可
 	struct skynet_module * result = _query(name);
 	if (result)
 		return result;
 
+	// 第一次注册，就先把本模块给锁一下
 	SPIN_LOCK(M)
 
+	// 因为刚刚查询的时候可能就有另一个线程刚好在注册，所以这个时候还要再检查一次
 	result = _query(name); // double check
 
+	// 目前计数里面只能支持最多注册32种模块
 	if (result == NULL && M->count < MAX_MODULE_TYPE) {
+		// 计数值就是新模块的索引
 		int index = M->count;
+		// 打开对应的链接库(.so)等，这里会读取配置中的cpath路径，所以需要注意这里的配置
 		void * dl = _try_open(M,name);
 		if (dl) {
+			// 加载成功就放入缓存
 			M->m[index].name = name;
 			M->m[index].module = dl;
 
@@ -124,11 +149,17 @@ skynet_module_query(const char * name) {
 		}
 	}
 
+	// 解锁
 	SPIN_UNLOCK(M)
 
 	return result;
 }
 
+/**
+* 创建c模块的实例
+* 这里需要对应的c模块要注册上对应的`xxx_create`函数
+* 例如logger模块需要有`logger_create`函数
+*/
 void * 
 skynet_module_instance_create(struct skynet_module *m) {
 	if (m->create) {
@@ -138,6 +169,10 @@ skynet_module_instance_create(struct skynet_module *m) {
 	}
 }
 
+/**
+ 	* 初始化c模块的实例
+ 	* 需要c模块实现`xxx_init`
+ 	*/
 int
 skynet_module_instance_init(struct skynet_module *m, void * inst, struct skynet_context *ctx, const char * parm) {
 	return m->init(inst, ctx, parm);

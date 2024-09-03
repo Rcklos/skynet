@@ -36,8 +36,11 @@ struct link_list {
 	struct timer_node *tail;
 };
 
-// 时间轮(https://yuerer.com/Skynet%E6%97%B6%E9%97%B4%E8%BD%AE%E5%89%96%E6%9E%90/)
+/**
+* 定时器数据结构
+*/
 struct timer {
+	// 时间轮(https://yuerer.com/Skynet%E6%97%B6%E9%97%B4%E8%BD%AE%E5%89%96%E6%9E%90/)
 	struct link_list near[TIME_NEAR];
 	struct link_list t[4][TIME_LEVEL];
 	struct spinlock lock;

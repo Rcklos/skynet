@@ -26,7 +26,9 @@ struct message_queue {
 	struct spinlock lock;
 	// 句柄
 	uint32_t handle;
+	// 消息队列的容量
 	int cap;
+	// 队列头尾
 	int head;
 	int tail;
 	int release;
@@ -53,6 +55,9 @@ struct global_queue {
 
 static struct global_queue *Q = NULL;
 
+/**
+ * 将消息队列压入全局队列里, 一般是ctx消费完就压回去
+ */
 void 
 skynet_globalmq_push(struct message_queue * queue) {
 	struct global_queue *q= Q;
@@ -87,8 +92,12 @@ skynet_globalmq_pop() {
 	return mq;
 }
 
+/**
+ * 为指定的句柄创建一个新的消息队列
+ */
 struct message_queue * 
 skynet_mq_create(uint32_t handle) {
+	// 消息队列的初始化
 	struct message_queue *q = skynet_malloc(sizeof(*q));
 	q->handle = handle;
 	q->cap = DEFAULT_QUEUE_SIZE;
@@ -96,8 +105,11 @@ skynet_mq_create(uint32_t handle) {
 	q->tail = 0;
 	SPIN_INIT(q)
 	// When the queue is create (always between service create and service init) ,
+	// 消息队列的创建时机一般都是服务create之后，服务init之前
 	// set in_global flag to avoid push it to global queue .
+	// 这个时候消息队列还不在全局队列里，但这个时候需要绑定在ctx上，所以这里要给它设置一个global的标志，以防被压进全局队列
 	// If the service init success, skynet_context_new will call skynet_mq_push to push it to global queue.
+	// 如果服务完成了init操作，ctx会自己把它压进全局队列里的
 	q->in_global = MQ_IN_GLOBAL;
 	q->release = 0;
 	q->overload = 0;
