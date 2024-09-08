@@ -293,7 +293,7 @@ static void
 dispatch_message(struct skynet_context *ctx, struct skynet_message *msg) {
 	assert(ctx->init);
 	CHECKCALLING_BEGIN(ctx)
-	// 这时TSD存储当前ctx的句柄
+	// 这时工作线程的TSD存储当前ctx的句柄
 	pthread_setspecific(G_NODE.handle_key, (void *)(uintptr_t)(ctx->handle));
 	int type = msg->sz >> MESSAGE_TYPE_SHIFT;
 	size_t sz = msg->sz & MESSAGE_TYPE_MASK;
@@ -340,6 +340,7 @@ skynet_context_message_dispatch(struct skynet_monitor *sm, struct message_queue 
 		// 尝试从全局队列里面弹出一个消息队列
 		q = skynet_globalmq_pop();
 		if (q==NULL)
+			// 弹不出来东西就让工作线程歇着吧
 			return NULL;
 	}
 
@@ -359,11 +360,13 @@ skynet_context_message_dispatch(struct skynet_monitor *sm, struct message_queue 
 	struct skynet_message msg;
 
 	for (i=0;i<n;i++) {
-		// 尝试弹出消息
+		// 消息队列到手，尝试弹出消息
 		if (skynet_mq_pop(q,&msg)) {
+			// 弹出来的消息没问题，就让ctx就没用了
 			skynet_context_release(ctx);
 			return skynet_globalmq_pop();
 		} else if (i==0 && weight >= 0) {
+			// 权重越高消费能力越强
 			n = skynet_mq_length(q);
 			n >>= weight;
 		}

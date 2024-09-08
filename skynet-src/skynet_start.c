@@ -69,11 +69,17 @@ wakeup(struct monitor *m, int busy) {
 	}
 }
 
+/**
+ * socket线程入口
+ */
 static void *
 thread_socket(void *p) {
 	struct monitor * m = p;
+	// 初始化线程的TSD
 	skynet_initthread(THREAD_SOCKET);
+	// 不断死循环
 	for (;;) {
+		// 处理socket消息
 		int r = skynet_socket_poll();
 		if (r==0)
 			break;
@@ -178,6 +184,7 @@ thread_worker(void *p) {
 		// 尝试从全局队列里面弹出一个消息队列进行消费
 		// 函数的字面意思就是ctx消息分发
 		q = skynet_context_message_dispatch(sm, q, weight);
+		// 如果发现取不到消息的话，就直接跑休眠的逻辑
 		if (q == NULL) {
 			if (pthread_mutex_lock(&m->mutex) == 0) {
 				++ m->sleep;
