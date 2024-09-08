@@ -1,6 +1,13 @@
 {
   "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
-  "workspace.library": ["lualib"],
   "runtime.version": "Lua 5.3",
-  "hint.enable": false
+  "hint.enable": false,
+  "runtime.path": [
+    "?.lua",
+    "?/init.lua",
+    "lualib/?.lua",
+    "lualib/?/init.lua",
+    "exampes/?.lua",
+    "test/?.lua",
+  ],
 }
